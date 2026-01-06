@@ -1,0 +1,15 @@
+node_modules
+.DS_Store
+dist-ssr
+*.local
+count.txt
+.env
+.nitro
+.tanstack
+.wrangler
+.vinxi
+todos.json
+
+# Local Netlify folder
+.netlify
+output

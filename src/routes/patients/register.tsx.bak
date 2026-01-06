@@ -1,0 +1,817 @@
+import { createFileRoute } from '@tanstack/react-router';
+import { AlertCircle, RefreshCw, Search, UserPlus } from 'lucide-react';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { BillModal } from '@/components/BillModal';
+import { Layout } from '@/components/Layout';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { toast } from '@/lib/toast';
+import { getAllDoctors } from '@/routes/apis/doctor-apis';
+import {
+  createPatientWithTests,
+  searchPatientByPhone,
+} from '@/routes/apis/patient-apis';
+import { getAllTests } from '@/routes/apis/test-apis';
+export const Route = createFileRoute('/patients/register')({
+  component: PatientRegistration,
+  loader: async () => {
+    const [testsResult, doctorsResult] = await Promise.all([
+      getAllTests({
+        data: { limit: 100, offset: 0, sortBy: 'name', sortOrder: 'asc' },
+      }),
+      getAllDoctors({
+        data: { limit: 100, offset: 0, sortBy: 'name', sortOrder: 'asc' },
+      }),
+    ]);
+    return { tests: testsResult, doctors: doctorsResult };
+  },
+});
+
+interface Test {
+  id: number;
+  name: string;
+  price: string;
+  metadata: any;
+}
+
+interface Doctor {
+  id: number;
+  name: string;
+  registrationNumber: string | null;
+  specialization: string | null;
+}
+
+interface PatientFormData {
+  name: string;
+  age?: number;
+  gender?: string;
+  phoneNumber: number;
+  addressLine1?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  pincode?: number;
+}
+
+interface TestFormData {
+  testIds: number[];
+  doctorId?: number;
+  reportDeliveryDate?: string;
+  discount?: string;
+  tax?: string;
+}
+
+function PatientRegistration() {
+  const loaderData = Route.useLoaderData();
+  const [step, setStep] = useState<'search' | 'register' | 'tests' | 'payment'>('search');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [existingPatient, setExistingPatient] = useState<any>(null);
+  const [selectedTests, setSelectedTests] = useState<number[]>([]);
+  const [testSearchQuery, setTestSearchQuery] = useState('');
+  const [showBillModal, setShowBillModal] = useState(false);
+  const [billData, setBillData] = useState<any>(null);
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('unpaid');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [testFormData, setTestFormData] = useState<TestFormData | null>(null);
+
+  const allTests = loaderData?.tests?.data || [];
+  const allDoctors = loaderData?.doctors?.data || [];
+
+  const {
+    register: registerPatient,
+    handleSubmit: handleSubmitPatient,
+    formState: { errors: errorsPatient, isSubmitting: isSubmittingPatient },
+  } = useForm<PatientFormData>();
+
+  const {
+    register: registerTests,
+    handleSubmit: handleSubmitTests,
+    watch,
+    formState: { isSubmitting: isSubmittingTests },
+  } = useForm<TestFormData>();
+
+  const discount = watch('discount') || '0';
+  const tax = watch('tax') || '0';
+
+  const calculateTotals = () => {
+    const testsTotal = selectedTests.reduce((sum, testId) => {
+      const test = allTests.find((t: Test) => t.id === testId);
+      return sum + (test ? parseFloat(test.price) : 0);
+    }, 0);
+
+    const discountAmount = (testsTotal * parseFloat(discount)) / 100;
+    const taxAmount = ((testsTotal - discountAmount) * parseFloat(tax)) / 100;
+    const finalAmount = testsTotal - discountAmount + taxAmount;
+
+    return {
+      total: testsTotal.toFixed(2),
+      discountAmount: discountAmount.toFixed(2),
+      taxAmount: taxAmount.toFixed(2),
+      final: finalAmount.toFixed(2),
+    };
+  };
+
+  const totals = calculateTotals();
+
+  const onSearchPhone = async () => {
+    if (!phoneNumber || phoneNumber.length < 10) {
+      toast.error('Please enter a valid phone number');
+      return;
+    }
+
+    try {
+      const result = await searchPatientByPhone({
+        data: { phoneNumber: parseInt(phoneNumber) },
+      });
+
+      if (result.exists && result.data) {
+        // Existing patient found - set their full data including ID
+        setExistingPatient({
+          ...result.data,
+          phoneNumber: parseInt(phoneNumber),
+        });
+        setStep('tests');
+      } else {
+        // No existing patient - go to registration form
+        setStep('register');
+      }
+    } catch (error) {
+      console.error('Error searching patient:', error);
+      alert('Failed to search patient');
+    }
+  };
+
+  const onRegisterPatient = async (data: PatientFormData) => {
+    setExistingPatient({ ...data, phoneNumber: parseInt(phoneNumber) });
+    setStep('tests');
+  };
+
+  const onSubmitTests = async (data: TestFormData) => {
+    if (selectedTests.length === 0) {
+      alert('Please select at least one test');
+      return;
+    }
+
+    // Store form data and move to payment step
+    setTestFormData(data);
+    setStep('payment');
+  };
+
+  const handlePaymentConfirmation = async () => {
+    if (paymentStatus !== 'paid') {
+      alert('Please mark the payment as PAID to generate the bill and complete registration');
+      return;
+    }
+
+    if (!testFormData) {
+      alert('Test data is missing. Please go back and select tests again!');
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      const doctorId = testFormData.doctorId && !isNaN(Number(testFormData.doctorId)) 
+        ? Number(testFormData.doctorId) 
+        : undefined;
+
+      // Determine if this is a new patient or existing patient re-registration
+      const isNewPatient = !existingPatient.id;
+
+      const result = await createPatientWithTests({
+        data: {
+          isNewPatient: isNewPatient,
+          patientId: existingPatient.id ? existingPatient.id : undefined,
+          patient: {
+            name: existingPatient.name,
+            age: existingPatient.age,
+            gender: existingPatient.gender,
+            phoneNumber: existingPatient.phoneNumber || parseInt(phoneNumber),
+            addressLine1: existingPatient.addressLine1,
+            city: existingPatient.city,
+            state: existingPatient.state,
+            country: existingPatient.country,
+            pincode: existingPatient.pincode,
+          },
+          tests: {
+            testIds: selectedTests,
+            doctorId: doctorId,
+            reportDeliveryDate: testFormData.reportDeliveryDate,
+            discount: discount || '0',
+            tax: tax || '0',
+            totalAmount: totals.total,
+            finalAmount: totals.final,
+          },
+        },
+      });
+
+      if (result.success) {
+        // Get full test details for the bill
+        const fullTestDetails = selectedTests.map(testId => {
+          const test = allTests.find((t: Test) => t.id === testId);
+          const patientTest = result.data.tests.find((pt: any) => pt.testId === testId);
+          const doctor = doctorId ? allDoctors.find((d: Doctor) => d.id === doctorId) : null;
+          
+          return {
+            patientTest: patientTest,
+            test: test,
+            doctor: doctor
+          };
+        });
+
+        // Prepare bill data with all necessary information
+        const completeBillData = {
+          bill: result.data.bill,
+          patient: result.data.patient,
+          tests: fullTestDetails
+        };
+
+        setBillData(completeBillData);
+        setShowBillModal(true);
+      }
+    } catch (error) {
+      console.error('Error registering patient:', error);
+      alert(error instanceof Error ? error.message : 'Failed to register patient');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCloseBill = () => {
+    setShowBillModal(false);
+    // Redirect to lab management page
+    window.location.href = '/lab-management';
+  };
+
+  const toggleTest = (testId: number) => {
+    setSelectedTests((prev) =>
+      prev.includes(testId) ? prev.filter((id) => id !== testId) : [...prev, testId]
+    );
+  };
+
+  const filteredTests = allTests.filter((test: Test) =>
+    test.name.toLowerCase().includes(testSearchQuery.toLowerCase())
+  );
+
+  return (
+    <Layout>
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* Header */}
+        <div className="bg-white border border-gray-300 mb-4 p-4">
+          <h1 className="text-xl font-semibold text-gray-900">Patient Registration</h1>
+          <p className="text-sm text-gray-600 mt-1">
+            {step === 'search' && 'Search patient by phone number'}
+            {step === 'register' && 'Enter patient information'}
+            {step === 'tests' && 'Select tests and complete registration'}
+            {step === 'payment' && 'Confirm payment and generate bill'}
+          </p>
+        </div>
+
+        {/* Step 1: Phone Search */}
+        {step === 'search' && (
+          <div className="bg-white border border-gray-300 p-8">
+            <div className="max-w-md mx-auto">
+              <div className="flex justify-center mb-6">
+                <Search className="w-16 h-16 text-gray-400" />
+              </div>
+              <h2 className="text-lg font-semibold text-gray-900 text-center mb-6">
+                Search Patient
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <Label className="block text-sm font-medium text-gray-900 mb-2">
+                    Phone Number *
+                  </Label>
+                  <input
+                    type="number"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="Enter phone number"
+                    className="w-full px-4 py-3 border border-gray-300 text-sm rounded"
+                  />
+                </div>
+
+                <Button
+                  onClick={onSearchPhone}
+                  className="w-full px-4 py-3"
+                >
+                  <Search className="w-4 h-4 mr-2" />
+                  Search Patient
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Patient Registration Form */}
+        {step === 'register' && (
+          <div className="bg-white border border-gray-300 p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <UserPlus className="w-6 h-6 text-gray-700" />
+              <h2 className="text-lg font-semibold text-gray-900">
+                Basic Information
+              </h2>
+            </div>
+
+            <form onSubmit={handleSubmitPatient(onRegisterPatient)}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="block text-sm font-medium text-gray-900 mb-1">
+                    Full Name *
+                  </Label>
+                  <input
+                    type="text"
+                    {...registerPatient('name', {
+                      required: 'Name is required',
+                      minLength: { value: 2, message: 'Minimum 2 characters' },
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                    placeholder="Enter full name"
+                  />
+                  {errorsPatient.name && (
+                    <p className="text-red-600 text-xs mt-1">
+                      {errorsPatient.name.message}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="block text-sm font-medium text-gray-900 mb-1">
+                    Age
+                  </Label>
+                  <input
+                    type="number"
+                    {...registerPatient('age', { valueAsNumber: true })}
+                    className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                    placeholder="Enter age"
+                  />
+                </div>
+
+                <div>
+                  <Label className="block text-sm font-medium text-gray-900 mb-1">
+                    Gender
+                  </Label>
+                  <select
+                    {...registerPatient('gender')}
+                    className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                  >
+                    <option value="">Select gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <Label className="block text-sm font-medium text-gray-900 mb-1">
+                    Phone Number *
+                  </Label>
+                  <input
+                    type="text"
+                    value={phoneNumber}
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 text-sm bg-gray-100 rounded"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <Label className="block text-sm font-medium text-gray-900 mb-1">
+                    Address
+                  </Label>
+                  <input
+                    type="text"
+                    {...registerPatient('addressLine1')}
+                    className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                    placeholder="Enter address"
+                  />
+                </div>
+
+                <div>
+                  <Label className="block text-sm font-medium text-gray-900 mb-1">
+                    City
+                  </Label>
+                  <input
+                    type="text"
+                    {...registerPatient('city')}
+                    className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                    placeholder="Enter city"
+                  />
+                </div>
+
+                <div>
+                  <Label className="block text-sm font-medium text-gray-900 mb-1">
+                    State
+                  </Label>
+                  <input
+                    type="text"
+                    {...registerPatient('state')}
+                    className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                    placeholder="Enter state"
+                  />
+                </div>
+
+                <div>
+                  <Label className="block text-sm font-medium text-gray-900 mb-1">
+                    Country
+                  </Label>
+                  <input
+                    type="text"
+                    {...registerPatient('country')}
+                    className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                    placeholder="Enter country"
+                  />
+                </div>
+
+                <div>
+                  <Label className="block text-sm font-medium text-gray-900 mb-1">
+                    Pincode
+                  </Label>
+                  <input
+                    type="number"
+                    {...registerPatient('pincode', { valueAsNumber: true })}
+                    className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                    placeholder="Enter pincode"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <Button
+                  type="button"
+                  onClick={() => setStep('search')}
+                  variant="destructive"
+                  className="flex-1 px-4 py-2"
+                >
+                  Back
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isSubmittingPatient}
+                  className="flex-1 px-4 py-2"
+                >
+                  {isSubmittingPatient ? 'Processing...' : 'Next'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Step 3: Test Selection */}
+        {step === 'tests' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Test Selection Panel */}
+            <div className="lg:col-span-2 bg-white border border-gray-300 p-4">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Select Tests ({selectedTests.length} selected)
+              </h2>
+
+              <input
+                type="text"
+                placeholder="Search tests..."
+                value={testSearchQuery}
+                onChange={(e) => setTestSearchQuery(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 text-sm mb-4 rounded"
+              />
+
+              <div className="border border-gray-300 max-h-96 overflow-y-auto rounded">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr className="border-b border-gray-300">
+                      <th className="px-3 py-2 text-left font-semibold text-gray-900 w-12">
+                        Select
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-900">
+                        Test Name
+                      </th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-900">
+                        Price (₹)
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTests.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-8 text-center">
+                          <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                          <p className="text-gray-600">No tests found</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredTests.map((test: Test) => (
+                        <tr
+                          key={test.id}
+                          className="border-b border-gray-200 hover:bg-gray-50 cursor-pointer"
+                          onClick={() => toggleTest(test.id)}
+                        >
+                          <td className="px-3 py-2 text-center">
+                            <input
+                              type="checkbox"
+                              checked={selectedTests.includes(test.id)}
+                              onChange={() => toggleTest(test.id)}
+                              className="w-4 h-4"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-gray-900">{test.name}</td>
+                          <td className="px-3 py-2 text-right text-gray-900">
+                            ₹{test.price}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Billing Panel */}
+            <div className="lg:col-span-1">
+              <form onSubmit={handleSubmitTests(onSubmitTests)}>
+                <div className="bg-white border border-gray-300 p-4 rounded">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                    Bill Summary
+                  </h2>
+
+                  <div className="space-y-3 mb-4">
+                    <div>
+                      <Label className="block text-sm font-medium text-gray-900 mb-1">
+                        Referring Doctor
+                      </Label>
+                      <select
+                        {...registerTests('doctorId')}
+                        className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                      >
+                        <option value="">Select doctor</option>
+                        {allDoctors.map((doctor: Doctor) => (
+                          <option key={doctor.id} value={doctor.id}>
+                            {doctor.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <Label className="block text-sm font-medium text-gray-900 mb-1">
+                        Report Delivery Date
+                      </Label>
+                      <input
+                        type="date"
+                        {...registerTests('reportDeliveryDate')}
+                        className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="block text-sm font-medium text-gray-900 mb-1">
+                          Discount (%)
+                        </Label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          {...registerTests('discount')}
+                          className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div>
+                        <Label className="block text-sm font-medium text-gray-900 mb-1">
+                          Tax (%)
+                        </Label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          {...registerTests('tax')}
+                          className="w-full px-3 py-2 border border-gray-300 text-sm rounded"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-300 pt-3 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Subtotal:</span>
+                      <span className="text-gray-900">₹{totals.total}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Discount:</span>
+                      <span className="text-red-600">-₹{totals.discountAmount}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Tax:</span>
+                      <span className="text-gray-900">+₹{totals.taxAmount}</span>
+                    </div>
+                    <div className="flex justify-between text-base font-semibold border-t border-gray-300 pt-2">
+                      <span className="text-gray-900">Total:</span>
+                      <span className="text-gray-900">₹{totals.final}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 mt-6">
+                    <Button
+                      type="button"
+                      onClick={() => setStep(existingPatient.id ? 'search' : 'register')}
+                      variant="destructive"
+                      className="flex-1 px-4 py-2 text-sm"
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={isSubmittingTests || selectedTests.length === 0}
+                      className="flex-1 px-4 py-2 text-sm"
+                    >
+                      {isSubmittingTests ? 'Processing...' : 'Proceed to Payment'}
+                    </Button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Payment Confirmation */}
+        {step === 'payment' && (
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-white border border-gray-300 p-8 rounded-lg">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">
+                Payment Confirmation
+              </h2>
+
+              {/* Bill Summary */}
+              <div className="bg-gray-50 border border-gray-300 p-6 rounded-lg mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Registration Summary
+                </h3>
+                
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Patient Name:</span>
+                    <span className="text-gray-900 font-medium">{existingPatient?.name}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Phone Number:</span>
+                    <span className="text-gray-900 font-medium">{phoneNumber}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Selected Tests:</span>
+                    <span className="text-gray-900 font-medium">{selectedTests.length}</span>
+                  </div>
+                  
+                  <div className="border-t border-gray-300 pt-3 mt-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Subtotal:</span>
+                      <span className="text-gray-900">₹{totals.total}</span>
+                    </div>
+                    <div className="flex justify-between text-sm mt-2">
+                      <span className="text-gray-600">Discount:</span>
+                      <span className="text-red-600">-₹{totals.discountAmount}</span>
+                    </div>
+                    <div className="flex justify-between text-sm mt-2">
+                      <span className="text-gray-600">Tax:</span>
+                      <span className="text-gray-900">+₹{totals.taxAmount}</span>
+                    </div>
+                    <div className="flex justify-between text-lg font-bold border-t border-gray-300 pt-3 mt-3">
+                      <span className="text-gray-900">Total Amount:</span>
+                      <span className="text-blue-600">₹{totals.final}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Status Selection */}
+              <div className="mb-6">
+                <Label className="block text-base font-semibold text-gray-900 mb-3">
+                  Payment Status *
+                </Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentStatus('paid')}
+                    className={`px-6 py-4 border-2 rounded-lg text-center transition-all ${
+                      paymentStatus === 'paid'
+                        ? 'border-green-600 bg-green-50'
+                        : 'border-gray-300 bg-white hover:border-green-400'
+                    }`}
+                  >
+                    <div className="flex flex-col items-center">
+                      <div className={`w-6 h-6 rounded-full border-2 mb-2 flex items-center justify-center ${
+                        paymentStatus === 'paid'
+                          ? 'border-green-600 bg-green-600'
+                          : 'border-gray-300'
+                      }`}>
+                        {paymentStatus === 'paid' && (
+                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className={`font-semibold ${
+                        paymentStatus === 'paid' ? 'text-green-700' : 'text-gray-700'
+                      }`}>
+                        PAID
+                      </span>
+                      <span className="text-xs text-gray-500 mt-1">
+                        Payment received
+                      </span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentStatus('unpaid')}
+                    className={`px-6 py-4 border-2 rounded-lg text-center transition-all ${
+                      paymentStatus === 'unpaid'
+                        ? 'border-red-600 bg-red-50'
+                        : 'border-gray-300 bg-white hover:border-red-400'
+                    }`}
+                  >
+                    <div className="flex flex-col items-center">
+                      <div className={`w-6 h-6 rounded-full border-2 mb-2 flex items-center justify-center ${
+                        paymentStatus === 'unpaid'
+                          ? 'border-red-600 bg-red-600'
+                          : 'border-gray-300'
+                      }`}>
+                        {paymentStatus === 'unpaid' && (
+                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className={`font-semibold ${
+                        paymentStatus === 'unpaid' ? 'text-red-700' : 'text-gray-700'
+                      }`}>
+                        UNPAID
+                      </span>
+                      <span className="text-xs text-gray-500 mt-1">
+                        Payment pending
+                      </span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Warning for Unpaid */}
+              {paymentStatus === 'unpaid' && (
+                <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 mb-6">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-yellow-800">
+                        Payment Required
+                      </p>
+                      <p className="text-xs text-yellow-700 mt-1">
+                        Please mark the payment as PAID to generate the bill and complete the patient registration.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-4">
+                <Button
+                  type="button"
+                  onClick={() => setStep('tests')}
+                  variant="destructive"
+                  className="flex-1 px-6 py-3"
+                  disabled={isProcessing}
+                >
+                  Back to Tests
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handlePaymentConfirmation}
+                  disabled={paymentStatus !== 'paid' || isProcessing}
+                  className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700"
+                >
+                  {isProcessing ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Generate Bill & Complete Registration'
+                  )}
+                </Button>
+              </div>
+
+              {paymentStatus !== 'paid' && (
+                <p className="text-xs text-center text-gray-500 mt-4">
+                  * Bill can only be generated after payment is marked as PAID
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bill Modal */}
+      {showBillModal && billData && (
+        <BillModal billData={billData} onClose={handleCloseBill} />
+      )}
+    </Layout>
+  );
+}
