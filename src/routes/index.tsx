@@ -1,8 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
-import { Activity, Eye, EyeOff, Lock, Mail, Phone, User } from 'lucide-react';
+import { Activity, Eye, EyeOff, Lock, Mail, Phone, TestTube, TestTubeDiagonal, TestTubes, User } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import bgimage from '@/assets/bgimage.jpg';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -17,12 +16,9 @@ export const Route = createFileRoute('/')({
     const result = await getCurrentUser();
     
     if (result.success && result.user) {
-      // User is authenticated
       if (!result.user.hasCompletedSetup || !result.user.labId) {
-        // Redirect to lab setup
         throw redirect({ to: '/lab-setup' });
       } else {
-        // Redirect to lab management
         throw redirect({ to: '/lab-management' });
       }
     }
@@ -77,7 +73,6 @@ function AuthPage() {
       }
 
       if (result.success) {
-        // Check if user needs to complete lab setup
         if (!result.user.hasCompletedSetup || !result.user.labId) {
           window.location.href = '/lab-setup';
         } else {
@@ -135,45 +130,42 @@ function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-4">
-      <div className="absolute inset-0 z-0">
-        <img
-          src={bgimage}
-          alt="Medical Laboratory"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0"></div>
-      </div>
-
-      <div className="w-full max-w-md relative z-10">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full mb-4 shadow-lg">
-            <Activity className="w-8 h-8 text-blue-600" />
+    <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="bg-gray-100 rounded-xl shadow-2xl p-8">
+          {/* Logo and Header */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-2xl mb-4">
+              <TestTubes className="w-8 h-8 text-gray-800" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              {isLogin ? 'Welcome Back' : 'Get Started'}
+            </h1>
+            <p className="text-sm text-gray-600">
+              {isLogin ? 'Sign in to your lab dashboard' : 'Create your lab account'}
+            </p>
           </div>
-          <h1 className="text-white text-4xl font-bold mb-2">GlobPathology</h1>
-          <p className="text-white/90 text-lg">
-            {isLogin ? 'Welcome Back' : 'Get Started Today'}
-          </p>
-        </div>
 
-        <div className="backdrop-blur-md bg-white/10 border border-white/20 shadow-2xl rounded-2xl p-8">
+          {/* Success Message */}
           {successMessage && (
             <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-sm text-green-800">{successMessage}</p>
             </div>
           )}
 
+          {/* Error Message */}
           {errorMessage && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-800">{errorMessage}</p>
             </div>
           )}
 
+          {/* Login Form */}
           {isLogin ? (
             <form onSubmit={handleSubmitLogin(onLogin)} className="space-y-5">
               <div>
-                <Label className="block text-sm font-semibold text-white mb-2">
-                  Email Address *
+                <Label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email Address
                 </Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -186,21 +178,29 @@ function AuthPage() {
                         message: 'Invalid email address',
                       },
                     })}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 bg-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    placeholder="your.email@example.com"
+                    className="w-full pl-11 pr-4 py-3 border border-gray-300 bg-white rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 placeholder:text-gray-400"
+                    placeholder="admin@lab.com"
                   />
                 </div>
                 {errorsLogin.email && (
-                  <p className="text-red-300 text-xs mt-1">
+                  <p className="text-red-500 text-xs mt-1">
                     {errorsLogin.email.message}
                   </p>
                 )}
               </div>
 
               <div>
-                <Label className="block text-sm font-semibold text-white mb-2">
-                  Password *
-                </Label>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="block text-sm font-medium text-gray-700">
+                    Password
+                  </Label>
+                  <button
+                    type="button"
+                    className="text-sm text-gray-600 hover:text-gray-900"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
@@ -208,8 +208,8 @@ function AuthPage() {
                     {...registerLogin('password', {
                       required: 'Password is required',
                     })}
-                    className="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
-                    placeholder="Enter your password"
+                    className="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white text-gray-900 placeholder:text-gray-400"
+                    placeholder="••••••••"
                   />
                   <button
                     type="button"
@@ -224,7 +224,7 @@ function AuthPage() {
                   </button>
                 </div>
                 {errorsLogin.password && (
-                  <p className="text-red-300 text-xs mt-1">
+                  <p className="text-red-500 text-xs mt-1">
                     {errorsLogin.password.message}
                   </p>
                 )}
@@ -233,16 +233,17 @@ function AuthPage() {
               <Button
                 type="submit"
                 disabled={isSubmittingLogin}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                className="w-full py-3 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-md  transition-all"
               >
                 {isSubmittingLogin ? 'Signing in...' : 'Sign In'}
               </Button>
             </form>
           ) : (
+            /* Signup Form */
             <form onSubmit={handleSubmitSignup(onRegister)} className="space-y-4">
               <div>
-                <Label className="block text-sm font-semibold text-white mb-2">
-                  Full Name *
+                <Label className="block text-sm font-medium text-gray-700 mb-2">
+                  Full Name
                 </Label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -255,20 +256,20 @@ function AuthPage() {
                         message: 'Name must be at least 2 characters',
                       },
                     })}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
+                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white text-gray-900 placeholder:text-gray-400"
                     placeholder="John Doe"
                   />
                 </div>
                 {errorsSignup.name && (
-                  <p className="text-red-300 text-xs mt-1">
+                  <p className="text-red-500 text-xs mt-1">
                     {errorsSignup.name.message}
                   </p>
                 )}
               </div>
 
               <div>
-                <Label className="block text-sm font-semibold text-white mb-2">
-                  Email Address *
+                <Label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email Address
                 </Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -281,19 +282,19 @@ function AuthPage() {
                         message: 'Invalid email address',
                       },
                     })}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 bg-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="w-full pl-11 pr-4 py-3 border border-gray-300 bg-white rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 placeholder:text-gray-400"
                     placeholder="your.email@example.com"
                   />
                 </div>
                 {errorsSignup.email && (
-                  <p className="text-red-300 text-xs mt-1">
+                  <p className="text-red-500 text-xs mt-1">
                     {errorsSignup.email.message}
                   </p>
                 )}
               </div>
 
               <div>
-                <Label className="block text-sm font-semibold text-white mb-2">
+                <Label className="block text-sm font-medium text-gray-700 mb-2">
                   Phone Number
                 </Label>
                 <div className="relative">
@@ -301,15 +302,15 @@ function AuthPage() {
                   <input
                     type="tel"
                     {...registerSignup('phoneNumber')}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 bg-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    className="w-full pl-11 pr-4 py-3 border border-gray-300 bg-white rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 placeholder:text-gray-400"
                     placeholder="1234567890"
                   />
                 </div>
               </div>
 
               <div>
-                <Label className="block text-sm font-semibold text-white mb-2">
-                  Password *
+                <Label className="block text-sm font-medium text-gray-700 mb-2">
+                  Password
                 </Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -327,8 +328,8 @@ function AuthPage() {
                           'Password must contain uppercase, lowercase, number, and special character',
                       },
                     })}
-                    className="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
-                    placeholder="Enter password"
+                    className="w-full pl-11 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white text-gray-900 placeholder:text-gray-400"
+                    placeholder="••••••••"
                   />
                   <button
                     type="button"
@@ -343,15 +344,15 @@ function AuthPage() {
                   </button>
                 </div>
                 {errorsSignup.password && (
-                  <p className="text-red-300 text-xs mt-1">
+                  <p className="text-red-500 text-xs mt-1">
                     {errorsSignup.password.message}
                   </p>
                 )}
               </div>
 
               <div>
-                <Label className="block text-sm font-semibold text-white mb-2">
-                  Confirm Password *
+                <Label className="block text-sm font-medium text-gray-700 mb-2">
+                  Confirm Password
                 </Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -362,8 +363,8 @@ function AuthPage() {
                       validate: (value) =>
                         value === watch('password') || 'Passwords do not match',
                     })}
-                    className="w-full pl-11 pr-12 py-3 border border-gray-300 bg-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    placeholder="Confirm password"
+                    className="w-full pl-11 pr-12 py-3 border border-gray-300 bg-white rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 placeholder:text-gray-400"
+                    placeholder="••••••••"
                   />
                   <button
                     type="button"
@@ -378,14 +379,14 @@ function AuthPage() {
                   </button>
                 </div>
                 {errorsSignup.confirmPassword && (
-                  <p className="text-red-300 text-xs mt-1">
+                  <p className="text-red-500 text-xs mt-1">
                     {errorsSignup.confirmPassword.message}
                   </p>
                 )}
               </div>
 
-              <div className="p-3 bg-blue-900/30 border border-blue-400/30 rounded-lg backdrop-blur-sm">
-                <p className="text-xs text-white/90">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                <p className="text-xs text-gray-700">
                   <strong>Note:</strong> After registration, you'll be prompted to complete 
                   your lab setup with details like registration number, address, etc.
                 </p>
@@ -394,22 +395,23 @@ function AuthPage() {
               <Button
                 type="submit"
                 disabled={isSubmittingSignup}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                className="w-full py-3 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-xl transition-all"
               >
                 {isSubmittingSignup ? 'Creating Account...' : 'Create Account'}
               </Button>
             </form>
           )}
 
+          {/* Switch Mode */}
           <div className="mt-6 text-center">
-            <p className="text-sm text-white/90">
-              {isLogin ? "Don't have an account?" : 'Already have an account?'}
+            <p className="text-sm text-gray-600">
+              {isLogin ? "New to GlobPathology?" : 'Already have an account?'}
               <button
                 onClick={switchMode}
                 type="button"
-                className="ml-2 text-white font-semibold hover:text-blue-200 transition-colors underline"
+                className="ml-1 text-gray-900 font-semibold hover:text-gray-700 transition-colors"
               >
-                {isLogin ? 'Sign Up' : 'Sign In'}
+                {isLogin ? 'Create an account' : 'Sign in'}
               </button>
             </p>
           </div>
