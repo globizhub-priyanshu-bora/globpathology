@@ -598,6 +598,7 @@ export const getPatientById = createServerFn({ method: 'GET' })
   });
 
 // NEW FUNCTION: Bulk Delete Patients
+// NEW FUNCTION: Bulk Delete Patients - FIXED VERSION
 export const bulkDeletePatients = createServerFn({ method: 'POST' })
   .inputValidator(BulkDeleteSchema)
   .handler(async ({ data, request }) => {
@@ -620,8 +621,9 @@ export const bulkDeletePatients = createServerFn({ method: 'POST' })
         throw new Error('Some patients not found or access denied');
       }
 
-      // Delete related records first (cascading delete)
-      // Step 1: Get all patient tests to find associated test results and reports
+      // Delete related records in correct order (respecting foreign key constraints)
+      
+      // Step 1: Get all patient tests to find associated records
       const patientTestsToDelete = await db
         .select({ id: patientTestsSchema.id })
         .from(patientTestsSchema)
@@ -637,14 +639,23 @@ export const bulkDeletePatients = createServerFn({ method: 'POST' })
 
       const billIds = billsToDelete.map(b => b.id);
 
-      // Step 3: Delete test results first (depends on patientTests)
+      // Step 3: Delete sample collection records FIRST (they reference patientTests)
+      if (patientTestIds.length > 0) {
+        await db
+          .delete(sampleCollectionSchema)
+          .where(inArray(sampleCollectionSchema.patientTestId, patientTestIds));
+        console.log(`✅ Deleted ${patientTestIds.length} sample collection records`);
+      }
+
+      // Step 4: Delete test results (they reference patientTests)
       if (patientTestIds.length > 0) {
         await db
           .delete(testResultsSchema)
           .where(inArray(testResultsSchema.patientTestId, patientTestIds));
+        console.log(`✅ Deleted test results for ${patientTestIds.length} patient tests`);
       }
 
-      // Step 4: Delete reports linked to patient tests and bills
+      // Step 5: Delete reports linked to patient tests and bills
       if (patientTestIds.length > 0 || billIds.length > 0) {
         const conditions = [];
         if (patientTestIds.length > 0) {
@@ -657,24 +668,27 @@ export const bulkDeletePatients = createServerFn({ method: 'POST' })
           await db
             .delete(reportSchema)
             .where(or(...conditions));
+          console.log(`✅ Deleted reports`);
         }
       }
 
-      // Step 5: Delete patient tests BEFORE bills (patient tests may reference bills)
+      // Step 6: Delete patient tests (now safe after deleting sample collections and test results)
       if (patientTestIds.length > 0) {
         await db
           .delete(patientTestsSchema)
           .where(inArray(patientTestsSchema.patientId, data.ids));
+        console.log(`✅ Deleted ${patientTestIds.length} patient tests`);
       }
 
-      // Step 6: Delete bills linked to these patients
+      // Step 7: Delete bills
       if (billIds.length > 0) {
         await db
           .delete(billSchema)
           .where(inArray(billSchema.patientId, data.ids));
+        console.log(`✅ Deleted ${billIds.length} bills`);
       }
 
-      // Hard delete patients from database
+      // Step 8: Finally delete patients
       await db
         .delete(patientSchema)
         .where(
@@ -683,6 +697,7 @@ export const bulkDeletePatients = createServerFn({ method: 'POST' })
             eq(patientSchema.labId, labId)
           )
         );
+      console.log(`✅ Deleted ${patientsToDelete.length} patients`);
 
       return {
         success: true,
