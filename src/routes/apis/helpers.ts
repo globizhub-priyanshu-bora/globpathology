@@ -3,7 +3,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { userSchema } from '@/db/schema';
-import { getSession, getSessionFromRequest } from '@/lib/session-manager';
+import { getSessionAsync, getSessionFromRequest } from '@/lib/session-manager';
 
 /**
  * CRITICAL SECURITY FUNCTION
@@ -18,14 +18,10 @@ export const getLabIdFromRequest = async (request: Request): Promise<number> => 
       throw new Error('Not authenticated');
     }
 
-    // Try to get from memory first (works locally and on same server instance)
-    let session = getSession(sessionId);
+    // ✅ Use getSessionAsync to check database if not in memory
+    const session = await getSessionAsync(sessionId);
     
-    // If not found in memory, it might be on Vercel where each request is stateless
-    // Fall back to reading from database using the session ID stored in cookies
     if (!session) {
-      console.warn('Session not found in memory, checking database');
-      // The session ID should have been stored somewhere or we need to look it up differently
       throw new Error('Session expired or invalid');
     }
 
@@ -61,7 +57,8 @@ export const getUserFromRequest = async (request: Request) => {
     throw new Error('Not authenticated');
   }
 
-  const session = getSession(sessionId);
+  // ✅ Use getSessionAsync to check database if not in memory
+  const session = await getSessionAsync(sessionId);
   
   if (!session) {
     throw new Error('Session expired');

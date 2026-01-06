@@ -47,7 +47,7 @@ const cleanupInterval = setInterval(() => {
   }
   
   if (cleaned > 0) {
-    console.log(`��� Cleaned up ${cleaned} expired sessions`);
+    console.log(`Cleaned up ${cleaned} expired sessions`);
   }
 }, 60 * 60 * 1000);
 
@@ -60,7 +60,7 @@ export const generateSessionId = (): string => {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
 };
 
-export const createSession = (userData: Omit<SessionData, 'createdAt' | 'lastActivity'>): string => {
+export const createSession = async (userData: Omit<SessionData, 'createdAt' | 'lastActivity'>): Promise<string> => {
   const sessionId = generateSessionId();
   const now = Date.now();
   const expiresAt = new Date(now + SESSION_MAX_AGE_MS);
@@ -74,29 +74,23 @@ export const createSession = (userData: Omit<SessionData, 'createdAt' | 'lastAct
   // Store in memory
   sessions.set(sessionId, sessionData);
   
-  // Store in database for Vercel serverless persistence (non-blocking)
+  // ✅ Store in database SYNCHRONOUSLY (blocking) for Vercel serverless persistence
   try {
-    // Use setImmediate to avoid blocking the request
-    setImmediate(() => {
-      try {
-        db.insert(sessionSchema).values({
-          id: sessionId,
-          userId: userData.userId,
-          labId: userData.labId,
-          email: userData.email,
-          role: userData.role,
-          isAdmin: userData.isAdmin,
-          permissions: userData.permissions,
-          hasCompletedSetup: userData.hasCompletedSetup,
-          expiresAt,
-        });
-        console.log('✅ Session stored in database:', sessionId);
-      } catch (error) {
-        console.warn('Failed to store session in database:', error);
-      }
+    await db.insert(sessionSchema).values({
+      id: sessionId,
+      userId: userData.userId,
+      labId: userData.labId,
+      email: userData.email,
+      role: userData.role,
+      isAdmin: userData.isAdmin,
+      permissions: userData.permissions,
+      hasCompletedSetup: userData.hasCompletedSetup,
+      expiresAt,
     });
+    console.log('✅ Session stored in database:', sessionId);
   } catch (error) {
-    console.warn('Could not queue session storage:', error);
+    console.error('❌ Failed to store session in database:', error);
+    // Don't throw - session is still in memory for this request
   }
   
   console.log('✅ Session created:', sessionId, 'for user:', userData.email);
@@ -163,7 +157,7 @@ export const getSessionAsync = async (sessionId: string): Promise<SessionData | 
   }
 
   // Session not in memory - try to get from database (for Vercel serverless)
-  console.log('Session not in memory, checking database:', sessionId);
+  console.log('📦 Session not in memory, checking database:', sessionId);
   try {
     const [dbSession] = await db
       .select()
@@ -228,17 +222,18 @@ export const updateSession = (sessionId: string, updates: Partial<SessionData>):
   return true;
 };
 
-export const deleteSession = (sessionId: string): void => {
+export const deleteSession = async (sessionId: string): Promise<void> => {
   sessions.delete(sessionId);
   
   // Also delete from database
   try {
-    db.delete(sessionSchema).where(eq(sessionSchema.id, sessionId)).run();
+    await db.delete(sessionSchema).where(eq(sessionSchema.id, sessionId));
+    console.log('✅ Session deleted from database:', sessionId);
   } catch (error) {
     console.warn('Failed to delete session from database:', error);
   }
   
-  console.log('✅ Session deleted:', sessionId);
+  console.log('✅ Session deleted from memory:', sessionId);
 };
 
 export const getSessionFromRequest = (request: Request): string | null => {
@@ -254,7 +249,7 @@ export const getSessionFromRequest = (request: Request): string | null => {
     const sessionId = cookies.sessionId || null;
     
     if (sessionId) {
-      console.log('��� Session ID from cookie:', sessionId);
+      console.log('🍪 Session ID from cookie:', sessionId);
     }
     
     return sessionId;
@@ -265,8 +260,8 @@ export const getSessionFromRequest = (request: Request): string | null => {
 };
 
 // Session validation endpoint
-export const validateSession = (sessionId: string): { valid: boolean; remaining: number } => {
-  const session = getSession(sessionId);
+export const validateSession = async (sessionId: string): Promise<{ valid: boolean; remaining: number }> => {
+  const session = await getSessionAsync(sessionId);
   
   if (!session) {
     return { valid: false, remaining: 0 };

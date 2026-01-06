@@ -111,14 +111,14 @@ export const registerUser = createServerFn({ method: 'POST' })
 
 export const setupLab = createServerFn({ method: 'POST' })
   .inputValidator(LabSetupSchema)
-  .handler(async ({ data }) => {
+  .handler(async ({ data, request }) => {
     try {
-      const sessionId = getSessionFromRequest({} as any);
+      const sessionId = getSessionFromRequest(request);
       if (!sessionId) {
         throw new Error('Not authenticated');
       }
 
-      const session = getSession(sessionId);
+      const session = await getSessionAsync(sessionId);
       if (!session) {
         throw new Error('Session expired');
       }
@@ -226,7 +226,8 @@ export const loginUser = createServerFn({ method: 'POST' })
         throw new Error('Invalid email or password');
       }
 
-      const sessionId = createSession({
+      // ✅ Await createSession to ensure database write completes
+      const sessionId = await createSession({
         userId: user.id,
         email: user.email,
         name: user.name,
@@ -283,7 +284,7 @@ export const logoutUser = createServerFn({ method: 'POST' })
       const sessionId = getSessionFromRequest(request);
 
       if (sessionId) {
-        deleteSession(sessionId);
+        await deleteSession(sessionId);
       }
 
       const cookie = serialize('sessionId', '', {
@@ -352,7 +353,7 @@ export const getCurrentUser = createServerFn({ method: 'GET' })
         .limit(1);
 
       if (!user) {
-        deleteSession(sessionId);
+        await deleteSession(sessionId);
         return {
           success: false,
           user: null,
@@ -429,6 +430,7 @@ export const checkAuthorization = createServerFn({ method: 'GET' })
       };
     }
   });
+
 // ============================================
 // SESSION VALIDATION ENDPOINTS
 // ============================================
@@ -486,7 +488,7 @@ export const keepSessionAlive = createServerFn({ method: 'POST' })
       }
 
       // Update session activity
-      const session = getSession(sessionId);
+      const session = await getSessionAsync(sessionId);
       if (!session) {
         return {
           success: false,
@@ -520,11 +522,11 @@ export const keepSessionAlive = createServerFn({ method: 'POST' })
 export const forceLogout = createServerFn({ method: 'POST' })
   .handler(async ({ request }) => {
     try {
-      const session = await getSessionFromRequest(request);
+      const sessionId = getSessionFromRequest(request);
       
-      if (session) {
-        deleteSession(session.id);
-        console.log(`✅ Session ${session.id} deleted - user logged out`);
+      if (sessionId) {
+        await deleteSession(sessionId);
+        console.log(`✅ Session ${sessionId} deleted - user logged out`);
       }
 
       return {
