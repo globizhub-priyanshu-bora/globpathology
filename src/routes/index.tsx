@@ -135,7 +135,7 @@ function AuthPage() {
         <div className="bg-gray-100 rounded-xl shadow-2xl p-8">
           {/* Logo and Header */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-2xl mb-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-300 rounded-2xl mb-4">
               <TestTubes className="w-8 h-8 text-gray-800" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">
